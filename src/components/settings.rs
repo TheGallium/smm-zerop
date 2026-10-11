@@ -50,6 +50,10 @@ pub struct Settings {
     #[clap(long, env = "DISCORD_WEBHOOK_TOKEN")]
     pub discord_webhook_token: String,
 
+    /// Discord Webhook Bot: Mention Tarket
+    #[clap(long, env = "DISCORD_WEBHOOK_MENTION_TARGET")]
+    pub discord_webhook_mention_target: String,
+
     /// The Socket address the server should listen on
     #[clap(long, env = "LISTEN", default_value = "[::1]:8081")]
     pub listen: SocketAddr,
