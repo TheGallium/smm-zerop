@@ -48,8 +48,8 @@ impl LazyJinja {
         {
             let static_tpls = include!(concat!(env!("OUT_DIR"), "/lazyjinja_templates.rs"));
             base_env.set_loader(move |name| match static_tpls.get(name) {
-                Some(tpl) => Ok(Some((*tpl).into())),
-                None => Ok(None),
+                Some(tpl) => Ok(Some((*tpl).to_string())),
+                None => Ok(None::<String>),
             });
         }
 

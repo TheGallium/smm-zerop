@@ -52,8 +52,8 @@
               <img alt="Level Thumbnail" src="https://tgrcode.com/mm2/level_thumbnail/{{ level.id }}" />
             </noscript>
             <p>
-              <span>{{ level.uploaded_at | datetimeformat(format="[year]-[month]-[day]") }}</span>
-              <span>{{ level.uploaded_at | datetimeformat(format="[hour]:[minute]") }}</span>
+              <span>{{ level.uploaded_at | datetimeformat(format="%Y-%m-%d") }}</span>
+              <span>{{ level.uploaded_at | datetimeformat(format="%H:%M") }}</span>
             </p>
           </div>
         </div>

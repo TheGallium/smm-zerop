@@ -4,7 +4,7 @@
     "lint": "prettier --write 'templates/**/*.html'"
   },
   "devDependencies": {
-    "prettier": "3.9.6",
+    "prettier": "3.9.10",
     "prettier-plugin-jinja-template": "2.2.0"
   }
 }

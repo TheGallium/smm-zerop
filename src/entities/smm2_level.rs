@@ -198,6 +198,12 @@ impl Smm2Level {
     }
 }
 
+impl From<Smm2Level> for minijinja::Value {
+    fn from(value: Smm2Level) -> Self {
+        minijinja::Value::from(minijinja::value::Serde(value))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, sqlx::Type)]
 #[serde(rename_all = "lowercase")]
 #[sqlx(type_name = "text", rename_all = "UPPERCASE")]
@@ -291,6 +297,12 @@ pub struct FilterParams {
 
     #[serde(default, deserialize_with = "empty_string_as_none_enum")]
     pub tag: Option<Tag>,
+}
+
+impl From<FilterParams> for minijinja::Value {
+    fn from(value: FilterParams) -> Self {
+        minijinja::Value::from(minijinja::value::Serde(value))
+    }
 }
 
 impl ClearConditionGroup {

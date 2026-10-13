@@ -75,7 +75,7 @@ async fn random_level(
             .render(context! {
                 current_filter_query,
                 effective_filters,
-                extra_params,
+                extra_params => minijinja::value::Serde(&extra_params),
                 level
             })?,
     )
