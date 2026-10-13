@@ -27,7 +27,7 @@ async fn readyz_handler(
 ) -> Result<impl IntoResponse, ResponseError> {
     let _ = sqlx::query!(
         r#"select
-        now() as test_time"#
+        now() as "test_time: jiff_sqlx::Timestamp""#
     )
     .fetch_all(&app_state.database)
     .await?;

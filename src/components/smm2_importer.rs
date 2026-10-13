@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
 use futures_util::TryStreamExt;
+use jiff::{Span, Timestamp, civil, tz::TimeZone};
 use sqlx::PgPool;
-use time::{PrimitiveDateTime, macros::offset};
+use tiberius::{ColumnData, FromSql};
 use tracing::info;
 
 use crate::entities::smm2_level::Smm2Level;
@@ -18,6 +19,50 @@ macro_rules! expect_not_null {
             .get::<$type, &str>($field)
             .expect(&format!("{} IS NOT NULL", $field))
     };
+}
+
+/// A `datetime2` column, interpreted as UTC, to hack jiff support into
+/// tiberius. I'm sure there's a saner way, but tiberius is unmaintained
+/// anyway, maybe, so for now, I'll just ignore it.
+struct UtcDatetime2(Timestamp);
+
+impl<'a> FromSql<'a> for UtcDatetime2 {
+    fn from_sql(value: &'a ColumnData<'static>) -> tiberius::Result<Option<Self>> {
+        let ColumnData::DateTime2(dt) = value else {
+            return Err(tiberius::error::Error::Conversion(
+                format!("cannot interpret {value:?} as a datetime2").into(),
+            ));
+        };
+        let Some(dt) = dt else {
+            return Ok(None);
+        };
+
+        let conversion_error =
+            |e: jiff::Error| tiberius::error::Error::Conversion(e.to_string().into());
+
+        // `days` counts from 0001-01-01; `increments` are in units of
+        // 10^-scale seconds.
+        let date = civil::date(1, 1, 1)
+            .checked_add(
+                Span::new()
+                    .try_days(dt.date().days())
+                    .map_err(conversion_error)?,
+            )
+            .map_err(conversion_error)?;
+        let nanos = dt.time().increments() * 10u64.pow(9 - dt.time().scale() as u32);
+        let timestamp = date
+            .to_datetime(civil::Time::midnight())
+            .checked_add(
+                Span::new()
+                    .try_nanoseconds(nanos as i64)
+                    .map_err(conversion_error)?,
+            )
+            .and_then(|datetime| datetime.to_zoned(TimeZone::UTC))
+            .map_err(conversion_error)?
+            .timestamp();
+
+        Ok(Some(Self(timestamp)))
+    }
 }
 
 fn normalized_id(id: &str) -> String {
@@ -46,8 +91,7 @@ impl From<tiberius::Row> for Smm2Level {
 
         // Cryptan stored the upload datetimes without offset. It's kinda
         // irrelevant for our use-case, so I'll just assume they're always UTC.
-        let naive_datetime: PrimitiveDateTime = expect_not_null!(value, "date");
-        let uploaded_at = naive_datetime.assume_offset(offset!(UTC));
+        let UtcDatetime2(uploaded_at) = expect_not_null!(value, "date");
 
         let title: &str = expect_not_null!(value, "name");
         let description = value.get::<&str, &str>("description").map(|s| s.to_owned());
@@ -84,7 +128,7 @@ impl From<tiberius::Row> for Smm2Level {
 
         Smm2Level {
             id: normalized_id(id),
-            year: uploaded_at.year() as i64,
+            year: uploaded_at.to_zoned(TimeZone::UTC).year() as i64,
             title: title.to_owned(),
             description,
             uploaded_at,
@@ -151,4 +195,27 @@ pub async fn run(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use tiberius::time::{Date, DateTime2, Time};
+
+    use super::*;
+
+    #[test]
+    fn datetime2_is_decoded_as_utc() {
+        let column = ColumnData::DateTime2(Some(DateTime2::new(
+            Date::new(738949),
+            Time::new(256891230000, 7),
+        )));
+        let UtcDatetime2(timestamp) = UtcDatetime2::from_sql(&column).unwrap().unwrap();
+        assert_eq!(timestamp.to_string(), "2024-03-05T07:08:09.123Z");
+    }
+
+    #[test]
+    fn null_datetime2_is_none() {
+        let column = ColumnData::DateTime2(None);
+        assert!(UtcDatetime2::from_sql(&column).unwrap().is_none());
+    }
 }

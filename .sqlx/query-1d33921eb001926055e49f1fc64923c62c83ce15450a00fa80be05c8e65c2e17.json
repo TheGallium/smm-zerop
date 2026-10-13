@@ -1,11 +1,11 @@
 {
   "db_name": "PostgreSQL",
-  "query": "select\n        now() as test_time",
+  "query": "select\n        now() as \"test_time: jiff_sqlx::Timestamp\"",
   "describe": {
     "columns": [
       {
         "ordinal": 0,
-        "name": "test_time",
+        "name": "test_time: jiff_sqlx::Timestamp",
         "type_info": "Timestamptz",
         "origin": "Expression"
       }
@@ -17,5 +17,5 @@
       null
     ]
   },
-  "hash": "5f2faf78e7e0ebc6d617b3176567639085c14958d3560e29c140c4a2e95d0d4f"
+  "hash": "1d33921eb001926055e49f1fc64923c62c83ce15450a00fa80be05c8e65c2e17"
 }

@@ -1,8 +1,9 @@
 use std::vec;
 
+use jiff::Timestamp;
+use jiff_sqlx::ToSqlx;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, PgExecutor, Postgres, QueryBuilder, postgres::PgQueryResult};
-use time::OffsetDateTime;
 
 use crate::components::deserializers::{empty_string_as_none, empty_string_as_none_enum};
 
@@ -26,7 +27,8 @@ pub struct Smm2Level {
 
     pub title: String,
     pub description: Option<String>,
-    pub uploaded_at: OffsetDateTime,
+    #[sqlx(try_from = "jiff_sqlx::Timestamp")]
+    pub uploaded_at: Timestamp,
     pub clearcheck_ms: i64,
 
     pub attempts: i64,
@@ -72,7 +74,7 @@ impl Smm2Level {
             self.year,
             self.title,
             self.description,
-            self.uploaded_at,
+            self.uploaded_at.to_sqlx() as _,
             self.clearcheck_ms,
             self.attempts,
             self.footprints,

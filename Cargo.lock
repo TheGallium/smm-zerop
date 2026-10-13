@@ -1398,6 +1398,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jiff-sqlx"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "07f07e4e3efb45ce1507e32af3b1e8f31d33d5edbf041ffeda3180042c3abc58"
+dependencies = [
+ "jiff",
+ "sqlx",
+]
+
+[[package]]
 name = "jiff-static"
 version = "0.2.37"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2448,6 +2458,8 @@ dependencies = [
  "axum-extra",
  "clap",
  "futures-util",
+ "jiff",
+ "jiff-sqlx",
  "minijinja",
  "minijinja-contrib",
  "minijinja-embed",
@@ -2459,7 +2471,6 @@ dependencies = [
  "sqlx",
  "thiserror 2.0.20",
  "tiberius",
- "time",
  "tokio",
  "tokio-util",
  "tower",
@@ -2530,7 +2541,6 @@ dependencies = [
  "sha2 0.10.9",
  "smallvec",
  "thiserror 2.0.20",
- "time",
  "tokio",
  "tokio-stream",
  "tracing",
@@ -2600,7 +2610,6 @@ dependencies = [
  "sha2 0.11.0",
  "sqlx-core",
  "thiserror 2.0.20",
- "time",
  "tracing",
  "uuid",
 ]
@@ -2636,7 +2645,6 @@ dependencies = [
  "sqlx-core",
  "stringprep",
  "thiserror 2.0.20",
- "time",
  "tracing",
  "uuid",
  "whoami",
@@ -2662,7 +2670,6 @@ dependencies = [
  "serde",
  "sqlx-core",
  "thiserror 2.0.20",
- "time",
  "tracing",
  "url",
  "uuid",
@@ -2839,7 +2846,6 @@ dependencies = [
  "pin-project-lite",
  "pretty-hex",
  "thiserror 1.0.69",
- "time",
  "tokio-rustls 0.24.1",
  "tracing",
  "uuid",
