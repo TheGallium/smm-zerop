@@ -22,6 +22,22 @@
   line-height: 1.6rem;
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --button-hover-marker: #c85209;
+    --button-inactive-background: #525252;
+    --button-primary-background: #7a5a00;
+    --button-primary-border: #664b00;
+    --main-background-color: #242424;
+    --main-text-color: #fcfcfc;
+    --page-title-color: #ffffff;
+    --section-box-background-color: #2d2d2d;
+    --text-box-background-color: #323232;
+    --title-background-color: #242424;
+    --title-text-color: #ffffff;
+  }
+}
+
 * {
   box-sizing: border-box;
 }
@@ -112,6 +128,10 @@ a.icon-button {
   &:active,
   &:focus {
     outline: 5px solid var(--button-hover-marker);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    border-color: var(--button-primary-border)
   }
 }
 
