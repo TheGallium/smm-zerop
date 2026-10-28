@@ -449,3 +449,19 @@ footer {
     grid-auto-rows: 1fr;
   }
 }
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --button-hover-marker: #c76121;
+    --button-inactive-background: #49545a;
+    --button-primary-background: hsl(46, 80%, 40%);
+    --button-primary-border: hsl(46, 74%, 48%);
+    --main-background-color: #142a29;
+    --main-text-color: #e3e9e5;
+    --page-title-color: #f5f7f5;
+    --section-box-background-color: #223837;
+    --text-box-background-color: #2b3d3b;
+    --title-background-color: #806714;
+    --title-text-color: #fff5d5;
+  }
+}
