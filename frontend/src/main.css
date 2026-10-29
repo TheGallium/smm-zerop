@@ -454,8 +454,8 @@ footer {
   :root {
     --button-hover-marker: #c76121;
     --button-inactive-background: #49545a;
-    --button-primary-background: hsl(46, 80%, 40%);
-    --button-primary-border: hsl(46, 74%, 48%);
+    --button-primary-background: #b89214;
+    --button-primary-border: #d5ab20;
     --main-background-color: #142a29;
     --main-text-color: #e3e9e5;
     --page-title-color: #f5f7f5;
