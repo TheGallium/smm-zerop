@@ -74,8 +74,4 @@ pub struct Settings {
     /// Limits the number of threads used - defaults to the number of CPU cores
     #[clap(long, env = "THREADS")]
     pub threads: Option<usize>,
-
-    /// Connection String for the Upstream levels database (MSSQL)
-    #[clap(long, env = "UPSTREAM_DB_CONNSTRING")]
-    pub upstream_db_connstring: Option<String>,
 }

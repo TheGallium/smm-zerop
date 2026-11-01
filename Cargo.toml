@@ -1,6 +1,6 @@
 [package]
 name = "smm-zerop"
-version = "2.1.0"
+version = "3.0.0"
 edition = "2024"
 build = "build.rs"
 
@@ -26,13 +26,7 @@ serde_urlencoded = "0.7"
 serde_with = "3"
 sqlx = { version = "0.9", features = ["postgres", "runtime-tokio", "uuid"] }
 thiserror = "2"
-tiberius = { version = "0.13", default-features = false, features = [
-  "futures-lite",
-  "tds73",
-  "tokio-rustls",
-] }
 tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["compat"] }
 tower = "0.5"
 tower-http = { version = "0.7", features = ["cors", "fs"] }
 tracing = "0.1"

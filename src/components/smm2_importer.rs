@@ -1,163 +1,129 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, time::Duration};
 
-use futures_util::TryStreamExt;
-use jiff::{Span, Timestamp, civil, tz::TimeZone};
+use anyhow::Context;
+use jiff::{Timestamp, tz::TimeZone};
+use serde::Deserialize;
 use sqlx::PgPool;
-use tiberius::{ColumnData, FromSql};
+use tokio::time::{self, MissedTickBehavior};
 use tracing::info;
 
 use crate::entities::smm2_level::Smm2Level;
 
-macro_rules! expect_not_null {
-    ($value:expr, $field:expr) => {
-        $value
-            .get($field)
-            .expect(&format!("{} IS NOT NULL", $field))
-    };
-    ($value:expr, $field:expr, $type:ty) => {
-        $value
-            .get::<$type, &str>($field)
-            .expect(&format!("{} IS NOT NULL", $field))
-    };
+#[derive(Debug, Deserialize)]
+struct Page {
+    levels: Vec<UpstreamLevel>,
+    total: u64,
 }
 
-/// A `datetime2` column, interpreted as UTC, to hack jiff support into
-/// tiberius. I'm sure there's a saner way, but tiberius is unmaintained
-/// anyway, maybe, so for now, I'll just ignore it.
-struct UtcDatetime2(Timestamp);
+#[derive(Debug, Deserialize)]
+struct UpstreamLevel {
+    code: String,
+    name: String,
+    description: Option<String>,
+    uploaded_at: Timestamp,
+    clear_check_ms: i64,
+    attempts: i64,
+    plays: i64,
+    tags: Vec<String>,
+    game_style_name: String,
+    likes: i64,
+    boos: i64,
+    is_unprocessed_clear: bool,
+    is_cleared: bool,
+    is_deleted: bool,
+    overworld: UpstreamArea,
+    clear_condition_id: Option<i64>,
+    clear_condition_magnitude: Option<i64>,
+}
 
-impl<'a> FromSql<'a> for UtcDatetime2 {
-    fn from_sql(value: &'a ColumnData<'static>) -> tiberius::Result<Option<Self>> {
-        let ColumnData::DateTime2(dt) = value else {
-            return Err(tiberius::error::Error::Conversion(
-                format!("cannot interpret {value:?} as a datetime2").into(),
-            ));
-        };
-        let Some(dt) = dt else {
-            return Ok(None);
-        };
-
-        let conversion_error =
-            |e: jiff::Error| tiberius::error::Error::Conversion(e.to_string().into());
-
-        // `days` counts from 0001-01-01; `increments` are in units of
-        // 10^-scale seconds.
-        let date = civil::date(1, 1, 1)
-            .checked_add(
-                Span::new()
-                    .try_days(dt.date().days())
-                    .map_err(conversion_error)?,
-            )
-            .map_err(conversion_error)?;
-        let nanos = dt.time().increments() * 10u64.pow(9 - dt.time().scale() as u32);
-        let timestamp = date
-            .to_datetime(civil::Time::midnight())
-            .checked_add(
-                Span::new()
-                    .try_nanoseconds(nanos as i64)
-                    .map_err(conversion_error)?,
-            )
-            .and_then(|datetime| datetime.to_zoned(TimeZone::UTC))
-            .map_err(conversion_error)?
-            .timestamp();
-
-        Ok(Some(Self(timestamp)))
-    }
+#[derive(Debug, Deserialize)]
+struct UpstreamArea {
+    theme_name: String,
 }
 
 fn normalized_id(id: &str) -> String {
     id.trim().replace('-', "").to_lowercase()
 }
 
-fn normalized_tags(tag1: Option<&str>, tag2: Option<&str>) -> Vec<String> {
-    let mut tags = vec![tag1, tag2];
+fn normalized_tags(tags: Vec<String>) -> Vec<String> {
+    let mut tags: Vec<String> = tags
+        .iter()
+        .filter(|t| t.as_str() != "None")
+        .map(|t| normalize_tag_name(t))
+        .collect();
     tags.sort();
     tags.dedup();
-
-    tags.iter()
-        .filter_map(|o| *o)
-        .filter(|t| *t != "None")
-        .map(normalize_tag_name)
-        .collect()
+    tags
 }
 
 fn normalize_tag_name(name: &str) -> String {
     name.trim().replace(' ', "_").to_lowercase()
 }
 
-impl From<tiberius::Row> for Smm2Level {
-    fn from(value: tiberius::Row) -> Self {
-        let id: &str = expect_not_null!(value, "id");
+fn non_zero(value: Option<i64>) -> Option<i64> {
+    value.filter(|v| *v != 0)
+}
 
-        // Cryptan stored the upload datetimes without offset. It's kinda
-        // irrelevant for our use-case, so I'll just assume they're always UTC.
-        let UtcDatetime2(uploaded_at) = expect_not_null!(value, "date");
+impl UpstreamLevel {
+    /// Levels that have been cleared or removed don't belong into the list.
+    fn is_listable(&self) -> bool {
+        !(self.is_cleared || self.is_unprocessed_clear || self.is_deleted)
+    }
+}
 
-        let title: &str = expect_not_null!(value, "name");
-        let description = value.get::<&str, &str>("description").map(|s| s.to_owned());
-
-        let clearcheck_ms: i32 = expect_not_null!(value, "upload_time");
-        let attempts: i32 = expect_not_null!(value, "attempts");
-        let footprints: i32 = expect_not_null!(value, "footprints");
-
-        // Please do not ask me why those fields are strings...
-        let likes: i64 = expect_not_null!(value, "likes", &str)
-            .parse::<i64>()
-            .expect("field should be a numeric value");
-        let boos: i64 = expect_not_null!(value, "boos", &str)
-            .parse::<i64>()
-            .expect("field should be a numeric value");
-        let comments: i64 = expect_not_null!(value, "comments", &str)
-            .parse::<i64>()
-            .expect("field should be a numeric value");
-
-        let clear_condition = match value.get::<i32, &str>("clear_condition") {
-            None => None,
-            Some(0) => None,
-            Some(i) => Some(i as i64),
-        };
-        let clear_condition_magnitude = match value.get::<i32, &str>("clear_condition_magnitude") {
-            None => None,
-            Some(0) => None,
-            Some(i) => Some(i as i64),
-        };
-
-        let style: &str = expect_not_null!(value, "style");
-        let theme: &str = expect_not_null!(value, "theme");
-        let tags = normalized_tags(value.get("tag1"), value.get("tag2"));
-
+impl From<UpstreamLevel> for Smm2Level {
+    fn from(value: UpstreamLevel) -> Self {
         Smm2Level {
-            id: normalized_id(id),
-            year: uploaded_at.to_zoned(TimeZone::UTC).year() as i64,
-            title: title.to_owned(),
-            description,
-            uploaded_at,
-            clearcheck_ms: clearcheck_ms as i64,
-            attempts: attempts as i64,
-            footprints: footprints as i64,
-            likes,
-            boos,
-            comments,
-            clear_condition,
-            clear_condition_magnitude,
-            style: style.to_owned(),
-            theme: normalize_tag_name(theme),
-            tags,
+            id: normalized_id(&value.code),
+            year: value.uploaded_at.to_zoned(TimeZone::UTC).year() as i64,
+            title: value.name,
+            description: value.description.filter(|d| !d.is_empty()),
+            uploaded_at: value.uploaded_at,
+            clearcheck_ms: value.clear_check_ms,
+            attempts: value.attempts,
+            footprints: value.plays,
+            likes: value.likes,
+            boos: value.boos,
+            // [ToDo] Cyzon's JSON dump doesn't have the number of comments *yet*
+            comments: 0,
+            clear_condition: non_zero(value.clear_condition_id),
+            clear_condition_magnitude: non_zero(value.clear_condition_magnitude),
+            style: value.game_style_name,
+            theme: normalize_tag_name(&value.overworld.theme_name),
+            tags: normalized_tags(value.tags),
         }
     }
 }
 
-#[tracing::instrument(skip(upstream_db, own_db))]
-pub async fn run(
-    upstream_db: &mut tiberius::Client<tokio_util::compat::Compat<tokio::net::TcpStream>>,
-    own_db: PgPool,
-) -> anyhow::Result<()> {
+async fn fetch_page(client: &reqwest::Client, offset: u64) -> anyhow::Result<Page> {
+    let url = format!("https://mm2list.cyzon.us/c/all?format=json&offset={offset}");
+
+    client
+        .get(&url)
+        .send()
+        .await
+        .and_then(|r| r.error_for_status())
+        .with_context(|| format!("requesting {url}"))?
+        .json()
+        .await
+        .with_context(|| format!("decoding response of {url}"))
+}
+
+#[tracing::instrument(skip(own_db))]
+pub async fn run(own_db: PgPool) -> anyhow::Result<()> {
+    let client = reqwest::Client::builder()
+        .user_agent("smm-uncleared.com (ping @skyschub on Discord)")
+        .timeout(Duration::from_secs(60))
+        .build()?;
+
+    let mut throttle = time::interval(Duration::from_secs(1));
+    throttle.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
     let level_blocklist: HashSet<String> =
         sqlx::query_scalar!("SELECT level_id FROM level_blocklist WHERE game = 'smm2'")
             .fetch_all(&own_db)
             .await?
-            .iter()
-            .cloned()
+            .into_iter()
             .collect();
 
     let mut db_transaction = own_db.begin().await?;
@@ -169,19 +135,27 @@ pub async fn run(
 
     info!("streaming levels...");
     let mut levels_count = 0;
-    let mut rows = upstream_db
-        .simple_query("SELECT * FROM v_Uncleared")
-        .await?
-        .into_row_stream();
-    while let Some(row) = rows.try_next().await? {
-        let level: Smm2Level = row.into();
+    let mut offset = 0;
+    loop {
+        throttle.tick().await;
+        let page = fetch_page(&client, offset).await?;
+        info!(offset, total = page.total, "fetched page");
 
-        if level_blocklist.contains(&level.id) {
-            continue;
+        let page_is_empty = page.levels.is_empty();
+        offset += page.levels.len() as u64;
+
+        for upstream_level in page.levels.into_iter().filter(|l| l.is_listable()) {
+            let level = Smm2Level::from(upstream_level);
+            if level_blocklist.contains(&level.id) {
+                continue;
+            }
+
+            levels_count += level.store(&mut *db_transaction).await?.rows_affected();
         }
 
-        level.store(&mut *db_transaction).await?;
-        levels_count += 1;
+        if page_is_empty || offset >= page.total {
+            break;
+        }
     }
 
     if levels_count > 0 {
@@ -195,27 +169,4 @@ pub async fn run(
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use tiberius::time::{Date, DateTime2, Time};
-
-    use super::*;
-
-    #[test]
-    fn datetime2_is_decoded_as_utc() {
-        let column = ColumnData::DateTime2(Some(DateTime2::new(
-            Date::new(738949),
-            Time::new(256891230000, 7),
-        )));
-        let UtcDatetime2(timestamp) = UtcDatetime2::from_sql(&column).unwrap().unwrap();
-        assert_eq!(timestamp.to_string(), "2024-03-05T07:08:09.123Z");
-    }
-
-    #[test]
-    fn null_datetime2_is_none() {
-        let column = ColumnData::DateTime2(None);
-        assert!(UtcDatetime2::from_sql(&column).unwrap().is_none());
-    }
 }
