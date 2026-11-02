@@ -31,6 +31,7 @@ struct UpstreamLevel {
     is_unprocessed_clear: bool,
     is_cleared: bool,
     is_deleted: bool,
+    num_comments: i64,
     overworld: UpstreamArea,
     clear_condition_id: Option<i64>,
     clear_condition_magnitude: Option<i64>,
@@ -65,7 +66,6 @@ fn non_zero(value: Option<i64>) -> Option<i64> {
 }
 
 impl UpstreamLevel {
-    /// Levels that have been cleared or removed don't belong into the list.
     fn is_listable(&self) -> bool {
         !(self.is_cleared || self.is_unprocessed_clear || self.is_deleted)
     }
@@ -84,8 +84,7 @@ impl From<UpstreamLevel> for Smm2Level {
             footprints: value.plays,
             likes: value.likes,
             boos: value.boos,
-            // [ToDo] Cyzon's JSON dump doesn't have the number of comments *yet*
-            comments: 0,
+            comments: value.num_comments,
             clear_condition: non_zero(value.clear_condition_id),
             clear_condition_magnitude: non_zero(value.clear_condition_magnitude),
             style: value.game_style_name,
